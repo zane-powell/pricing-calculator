@@ -164,7 +164,7 @@ def compute_monthly_volumes(
         result["PEPs Ongoing Monitoring"] = 0
 
     # Fill in 0 for any calculator products not covered by the Looker data
-    # (e.g. KYB, Title Check — these aren't in standard Looker exports).
+    # (e.g. KYB — these aren't in standard Looker exports).
     for product in data.PRODUCTS:
         if product not in result:
             result[product] = 0

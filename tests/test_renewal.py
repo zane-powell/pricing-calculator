@@ -156,10 +156,9 @@ def test_unmapped_products_default_to_zero():
         included_months=df.index.tolist(),
         statistic="median",
     )
-    # KYB and Title Check aren't in standard Looker checks export
+    # KYB isn't in standard Looker checks export
     assert result["KYB - Summary Report"] == 0
     assert result["KYB - UBO"] == 0
-    assert result["Title Check"] == 0
     assert result["IAV"] == 0
 
 

@@ -4,11 +4,13 @@ pdf_export.py — Generate a Thirdfort-branded pricing proposal PDF.
 Pure module like pricing.py and renewal.py — takes a Quote and returns PDF bytes.
 No Streamlit, no I/O. The Streamlit layer wraps this with a download button.
 
-Document structure (4 pages):
+Document structure (6 pages):
   1. Cover — dark teal, client name, big white title, decorative arcs motif
-  2. How our pricing works — two cards explaining platform fee + credits
-  3. Our Platform Tiers — three teal cards comparing tiers
-  4. Recommended tier detail — products table + pricing summary
+  2. Contents — minimal page-by-page table of contents
+  3. How our pricing works — two cards explaining platform fee + credits
+  4. Our Platform Tiers — three teal cards comparing tiers (platform fee shown)
+  5. Recommended tier detail — products table + simplified pricing summary
+  6. Cost per check guide — fully loaded cost & recommended recharge rate
 
 Brand assets are loaded from the assets/ folder relative to this file.
 Fonts gracefully fall back to Helvetica if not present.
@@ -28,6 +30,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 
+import data
 import pricing
 
 
@@ -216,7 +219,65 @@ def _draw_cover(c: canvas.Canvas, client_name: str, generation_date: date) -> No
 
 
 # ---------------------------------------------------------------------------
-# PAGE 2: How our pricing works
+# PAGE 2: Contents
+# ---------------------------------------------------------------------------
+def _draw_contents(
+    c: canvas.Canvas,
+    quote: pricing.Quote,
+    recommended_tier: pricing.TierQuote,
+    page_number: int,
+    total_pages: int,
+) -> None:
+    """Minimal contents page — clean numbered list, lots of white space.
+
+    Mirrors the structure of the existing Thirdfort proposal deck which has
+    a similarly minimal contents page as page 2.
+    """
+    # --- Title -----------------------------------------------------------
+    c.setFillColor(PRIMARY_DARK)
+    c.setFont(HEADER_FONT, 40)
+    c.drawString(MARGIN, PAGE_HEIGHT - 55 * mm, "Contents")
+
+    # --- Contents entries ------------------------------------------------
+    # Each entry is (page number on right, description on left).
+    # Page 5 entry is dynamic — uses the actual client name and tier.
+    entries = [
+        ("3", "How our pricing works"),
+        ("4", "Our platform tiers"),
+        ("5", f"Pricing proposal"),
+        ("6", "Cost per check & recommended recharge rate"),
+    ]
+
+    # Layout: page number column on the right (small, muted), description on the left.
+    entry_y = PAGE_HEIGHT - 90 * mm
+    line_spacing = 14 * mm
+
+    for page_num, description in entries:
+        # Description (left, dark)
+        c.setFillColor(TEXT_DARK)
+        c.setFont(BODY_FONT, 14)
+        c.drawString(MARGIN, entry_y, description)
+
+        # Page number (right-aligned, muted)
+        c.setFillColor(TEXT_MUTED)
+        c.setFont(BODY_FONT, 14)
+        c.drawRightString(PAGE_WIDTH - MARGIN, entry_y, page_num)
+
+        # Subtle divider line under each entry
+        c.setStrokeColor(RULE_LIGHT)
+        c.setLineWidth(0.5)
+        c.line(
+            MARGIN, entry_y - 4 * mm,
+            PAGE_WIDTH - MARGIN, entry_y - 4 * mm,
+        )
+
+        entry_y -= line_spacing
+
+    _draw_page_footer(c, page_number, total_pages)
+
+
+# ---------------------------------------------------------------------------
+# PAGE 3: How our pricing works
 # ---------------------------------------------------------------------------
 def _draw_how_pricing_works(c: canvas.Canvas, page_number: int, total_pages: int) -> None:
     """Two large cards: Platform fee + Credits."""
@@ -308,7 +369,6 @@ TIER_FEATURES = {
         "Source of Funds",
         "AML checks",
         "KYB checks",
-        "Title documents",
     ],
     "mid": [
         "Everything in Essentials, plus…",
@@ -320,7 +380,9 @@ TIER_FEATURES = {
         "Reporting (usage, billing, risk)",
     ],
     "enterprise": [
-        "Everything in Compliance/Flow, plus…",
+        # The {mid_tier_name} placeholder is filled in at render time with the
+        # actual middle-tier name for this vertical (Compliance / Flow / Risk).
+        "Everything in {mid_tier_name}, plus…",
         "Roles & permissions settings",
         "SSO",
         "Customisable reporting",
@@ -383,7 +445,9 @@ def _draw_platform_tiers(
         c.setFont(HEADER_FONT, 48)
         c.drawString(x + 10 * mm, card_top - 22 * mm, f"{index + 1}.")
 
-        # "RECOMMENDED" badge
+        # "RECOMMENDED" badge — always reserve space for it across all cards
+        # so tier titles align horizontally. The badge itself only renders on
+        # the recommended card; on the others, the same vertical slot is empty.
         if is_recommended:
             c.setFillColor(ACCENT_TERRACOTTA)
             c.roundRect(
@@ -395,27 +459,27 @@ def _draw_platform_tiers(
             c.setFont(BODY_FONT_BOLD, 8)
             c.drawString(x + 13 * mm, card_top - 30.5 * mm, "RECOMMENDED")
 
-        # Tier name + annual total (using actual quote, not just base fee)
+        # Tier name — same vertical position on every card regardless of badge
         c.setFillColor(white)
         c.setFont(BODY_FONT_BOLD, 16)
-        y_offset = 45 if is_recommended else 38
+        y_offset = 45
         c.drawString(x + 10 * mm, card_top - y_offset * mm, tier.tier_label)
 
-        # Annual total — what this client would actually pay
+        # Platform fee (the headline number for this tier — same for every client)
         c.setFont(BODY_FONT_BOLD, 13)
-        y_offset += 7
+        y_offset += 8
         c.drawString(
             x + 10 * mm, card_top - y_offset * mm,
-            f"£{tier.annual_total:,.0f}/year",
+            f"£{tier.base_fee:,.0f}/year",
         )
 
-        # Monthly equivalent — softer colour
+        # Small caption clarifying this is the platform fee, not the total quote
         c.setFillColor(HexColor("#9DBEC4"))
         c.setFont(BODY_FONT, 9)
         y_offset += 5
         c.drawString(
             x + 10 * mm, card_top - y_offset * mm,
-            f"£{tier.monthly_total:,.0f}/month",
+            "platform fee",
         )
 
         # Divider line
@@ -430,6 +494,20 @@ def _draw_platform_tiers(
         # Feature list
         y_offset += 6
         features = TIER_FEATURES[tier.tier_key]
+
+        # Resolve the {mid_tier_name} placeholder for the enterprise tier.
+        # The middle tier is named differently per vertical (Flow / Compliance /
+        # Risk) and we want the enterprise card to read naturally for the
+        # vertical the client is on, not "Compliance/Flow".
+        mid_tier_label = next(
+            (t.tier_label for t in quote.tiers if t.tier_key == "mid"),
+            "the previous tier",  # safety fallback
+        )
+        features = [
+            f.format(mid_tier_name=mid_tier_label) if "{" in f else f
+            for f in features
+        ]
+
         c.setFont(BODY_FONT, 10)
         c.setFillColor(white)
         for feature in features:
@@ -560,12 +638,12 @@ def _draw_pricing_detail(
         recommended_tier.tier_label,
     )
 
-    # Pricing rows
+    # Pricing rows — simplified to 4 client-facing rows.
+    # Removed "Annual credits required" and "Cost per credit" — these are
+    # internal calculation steps, not numbers the client needs to see.
     pricing_rows = [
-        ("Annual credits required", f"{recommended_tier.annual_credits_required:,}"),
-        ("Credits to purchase", f"{recommended_tier.package_adjusted_credits:,}"),
+        ("Annual credits to purchase", f"{recommended_tier.package_adjusted_credits:,}"),
         ("Free credits", f"{recommended_tier.included_credits + recommended_tier.free_credits:,}"),
-        ("Cost per credit", f"£{recommended_tier.cost_per_credit:.3f}"),
         ("Annual platform fee", f"£{recommended_tier.base_fee:,.0f}"),
     ]
 
@@ -610,16 +688,216 @@ def _draw_pricing_detail(
     c.setLineWidth(0.5)
     c.rect(right_x, y, right_width, table_top - y, fill=0, stroke=1)
 
+    _draw_page_footer(c, page_number, total_pages)
+
+
+# ---------------------------------------------------------------------------
+# PAGE 5: Cost per check & recommended recharge rate
+# ---------------------------------------------------------------------------
+def _calculate_fully_loaded_costs(
+    quote: pricing.Quote,
+    recommended_tier: pricing.TierQuote,
+) -> dict:
+    """
+    Calculate the fully loaded cost per check for each product.
+
+    'Fully loaded' = credit cost + a share of the platform fee.
+    The platform fee is allocated proportionally by credit consumption,
+    not by check volume — so a 25-credit check carries 25× the platform-fee
+    share of a 1-credit check. This is mathematically defensible and
+    matches what Zane currently uses in client conversations.
+
+    Returns a dict mapping product name -> fully loaded £ cost per check.
+    """
+    # Credit cost per credit, at this tier
+    cost_per_credit = recommended_tier.cost_per_credit
+
+    # Total annual credits actually consumed (NOT package-adjusted —
+    # we want the real demand, not the rounded-up purchase quantity)
+    total_credits_consumed = recommended_tier.annual_credits_required
+    if total_credits_consumed == 0:
+        # Edge case: empty quote. Avoid divide-by-zero — every product
+        # gets zero platform-fee allocation.
+        platform_fee_per_credit = 0.0
+    else:
+        platform_fee_per_credit = (
+            recommended_tier.base_fee / total_credits_consumed
+        )
+
+    # Effective cost per credit, fully loaded (credit + platform fee share)
+    fully_loaded_cost_per_credit = cost_per_credit + platform_fee_per_credit
+
+    # Compute per-product cost
+    fully_loaded = {}
+    for product in data.PRODUCTS:
+        credits_per_check = data.CREDITS_PER_CHECK[product][quote.vertical]
+        fully_loaded[product] = credits_per_check * fully_loaded_cost_per_credit
+
+    return fully_loaded
+
+
+def _draw_recharge_guide(
+    c: canvas.Canvas,
+    quote: pricing.Quote,
+    recommended_tier: pricing.TierQuote,
+    page_number: int,
+    total_pages: int,
+) -> None:
+    """Page 5 — Cost per check guide with recommended recharge rates."""
+
+    # --- Title (multi-line) ----------------------------------------------
+    c.setFillColor(PRIMARY_DARK)
+    c.setFont(HEADER_FONT, 22)
+    c.drawString(
+        MARGIN, PAGE_HEIGHT - 32 * mm,
+        f"A guide to your check costs on the {recommended_tier.tier_label} Tier",
+    )
+    c.setFont(HEADER_FONT, 22)
+    c.drawString(
+        MARGIN, PAGE_HEIGHT - 42 * mm,
+        "(Committed Credits) & recommended recharge rate",
+    )
+
+    # Compute the fully loaded cost per check for every product
+    fully_loaded = _calculate_fully_loaded_costs(quote, recommended_tier)
+
+    # --- Table layout ---
+    # Five columns: category bar | product | credits | fully-loaded cost | recharge
+    table_top = PAGE_HEIGHT - 55 * mm
+    bar_width = 4 * mm                 # the coloured left-edge bar
+    category_col_width = 42 * mm       # category name (only on first row of each group)
+    product_col_width = 50 * mm        # widest column — product names can be long
+    credits_col_width = 18 * mm
+    cost_col_width = 32 * mm
+    recharge_col_width = 28 * mm
+    total_table_width = (
+        bar_width + category_col_width + product_col_width
+        + credits_col_width + cost_col_width + recharge_col_width
+    )
+
+    # Column x-positions (running left-to-right from MARGIN)
+    bar_x = MARGIN
+    category_x = bar_x + bar_width
+    product_x = category_x + category_col_width
+    credits_x = product_x + product_col_width
+    cost_x = credits_x + credits_col_width
+    recharge_x = cost_x + cost_col_width
+
+    # --- Header row ---
+    header_height = 11 * mm
+    c.setFillColor(PRIMARY_DARK)
+    c.rect(bar_x, table_top - header_height, total_table_width, header_height,
+           fill=1, stroke=0)
+
+    c.setFillColor(white)
+    c.setFont(BODY_FONT_BOLD, 8)
+    # Category column has no header label (it just runs into the table body)
+    c.drawString(product_x + 2 * mm, table_top - 7 * mm, "Check type")
+    c.drawCentredString(credits_x + credits_col_width / 2,
+                        table_top - 7 * mm, "Credits")
+    c.drawCentredString(cost_x + cost_col_width / 2,
+                        table_top - 7 * mm, "Fully loaded cost*")
+    c.drawCentredString(recharge_x + recharge_col_width / 2,
+                        table_top - 7 * mm, "Recharge rate")
+
+    # --- Body rows, grouped by category ---
+    row_height = 9 * mm
+    y = table_top - header_height
+    row_index = 0  # for zebra striping
+
+    for category in data.PRODUCT_CATEGORIES:
+        category_products = category["products"]
+        category_height = row_height * len(category_products)
+
+        # Coloured left-edge bar covering all rows in this category
+        c.setFillColor(HexColor(category["colour"]))
+        c.rect(bar_x, y - category_height, bar_width, category_height,
+               fill=1, stroke=0)
+
+        # Solid background for the category column — no zebra striping here.
+        # This keeps the wrapped category text on a clean background regardless
+        # of which row it spans.
+        c.setFillColor(BG_NEUTRAL)
+        c.rect(category_x, y - category_height,
+               category_col_width, category_height,
+               fill=1, stroke=0)
+
+        # Zebra striping ONLY on the data columns (everything right of the
+        # category column). This stops the bold category text overlapping
+        # alternating greys, which looked messy.
+        data_cols_x = product_x
+        data_cols_width = (
+            product_col_width + credits_col_width
+            + cost_col_width + recharge_col_width
+        )
+        for row_in_category in range(len(category_products)):
+            row_y_top = y - row_in_category * row_height
+            if row_index % 2 == 1:
+                c.setFillColor(BG_NEUTRAL)
+                c.rect(data_cols_x, row_y_top - row_height,
+                       data_cols_width, row_height,
+                       fill=1, stroke=0)
+            row_index += 1
+
+        # Category name — centred vertically across all its rows
+        c.setFillColor(TEXT_DARK)
+        c.setFont(BODY_FONT_BOLD, 9)
+        category_text_y = y - category_height / 2 - 1 * mm
+        # Word wrap the category name within the column
+        category_lines = _wrap_text(
+            category["name"], category_col_width - 4 * mm, BODY_FONT_BOLD, 9,
+        )
+        # Stack the lines so they're vertically centred in the category block
+        line_height = 4 * mm
+        starting_y = category_text_y + ((len(category_lines) - 1) / 2) * line_height
+        for i, line in enumerate(category_lines):
+            c.drawString(category_x + 2 * mm,
+                         starting_y - i * line_height, line)
+
+        # Per-product rows
+        for row_in_category, product in enumerate(category_products):
+            row_y = y - row_in_category * row_height - 6 * mm
+            credits = data.CREDITS_PER_CHECK[product][quote.vertical]
+            cost = fully_loaded[product]
+            recharge = data.RECOMMENDED_RECHARGE.get(product, 0)
+
+            # Auto-shrink product name font if it would overflow the column.
+            # Most names fit at 10pt; "Identity Document Verification" needs 9pt.
+            available_width = product_col_width - 4 * mm
+            product_font_size = 10
+            if pdfmetrics.stringWidth(product, BODY_FONT, product_font_size) > available_width:
+                product_font_size = 9
+            if pdfmetrics.stringWidth(product, BODY_FONT, product_font_size) > available_width:
+                product_font_size = 8
+
+            c.setFillColor(TEXT_DARK)
+            c.setFont(BODY_FONT, product_font_size)
+            c.drawString(product_x + 2 * mm, row_y, product)
+
+            c.setFont(BODY_FONT, 10)
+            c.drawCentredString(credits_x + credits_col_width / 2, row_y,
+                                f"{credits} credit{'s' if credits != 1 else ''}")
+
+            c.setFont(BODY_FONT_BOLD, 10)
+            c.drawCentredString(cost_x + cost_col_width / 2, row_y,
+                                f"£{cost:,.2f}")
+            c.drawCentredString(recharge_x + recharge_col_width / 2, row_y,
+                                f"£{recharge}")
+
+        y -= category_height
+
+    # Outer table border
+    c.setStrokeColor(RULE_LIGHT)
+    c.setLineWidth(0.5)
+    c.rect(bar_x, y, total_table_width, table_top - y, fill=0, stroke=1)
+
     # --- Footnote ---------------------------------------------------------
     c.setFillColor(TEXT_MUTED)
     c.setFont(BODY_FONT, 9)
     c.drawString(
-        MARGIN, MARGIN + 22 * mm,
-        "*Includes access to our API. Does not include retrospective checks.",
-    )
-    c.drawString(
-        MARGIN, MARGIN + 18 * mm,
-        "Pricing valid for 30 days from the date on the cover page.",
+        MARGIN, y - 8 * mm,
+        "*'Fully loaded' check cost includes your platform fee + cost of credits. "
+        "All prices ex VAT.",
     )
 
     _draw_page_footer(c, page_number, total_pages)
@@ -666,27 +944,41 @@ def build_pdf(
     c.setAuthor("Thirdfort")
     c.setSubject(f"Pricing proposal for {quote.client_name}")
 
-    total_pages = 4
+    total_pages = 6
 
     # PAGE 1 — Cover
     _draw_cover(c, quote.client_name, generation_date)
     c.showPage()
 
-    # PAGE 2 — How our pricing works
-    _draw_how_pricing_works(c, page_number=2, total_pages=total_pages)
-    c.showPage()
-
-    # PAGE 3 — Platform Tiers
-    _draw_platform_tiers(
-        c, quote, recommended_tier_key,
-        page_number=3, total_pages=total_pages,
+    # PAGE 2 — Contents (NEW)
+    _draw_contents(
+        c, quote, recommended_tier,
+        page_number=2, total_pages=total_pages,
     )
     c.showPage()
 
-    # PAGE 4 — Recommended tier detail
+    # PAGE 3 — How our pricing works
+    _draw_how_pricing_works(c, page_number=3, total_pages=total_pages)
+    c.showPage()
+
+    # PAGE 4 — Platform Tiers
+    _draw_platform_tiers(
+        c, quote, recommended_tier_key,
+        page_number=4, total_pages=total_pages,
+    )
+    c.showPage()
+
+    # PAGE 5 — Recommended tier detail
     _draw_pricing_detail(
         c, quote, recommended_tier,
-        page_number=4, total_pages=total_pages,
+        page_number=5, total_pages=total_pages,
+    )
+    c.showPage()
+
+    # PAGE 6 — Cost per check & recommended recharge rate
+    _draw_recharge_guide(
+        c, quote, recommended_tier,
+        page_number=6, total_pages=total_pages,
     )
     c.showPage()
 

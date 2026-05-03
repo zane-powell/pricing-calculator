@@ -27,7 +27,6 @@ PRODUCTS = [
     "IAV",
     "KYB - Summary Report",
     "KYB - UBO",
-    "Title Check",
 ]
 
 # ---------------------------------------------------------------------------
@@ -63,7 +62,6 @@ CREDITS_PER_CHECK = {
     "IAV":                              {"Property": 5,  "Legal": 10, "Accounting & FS": 5},
     "KYB - Summary Report":             {"Property": 5,  "Legal": 5,  "Accounting & FS": 5},
     "KYB - UBO":                        {"Property": 25, "Legal": 25, "Accounting & FS": 25},
-    "Title Check":                      {"Property": 8,  "Legal": 8,  "Accounting & FS": 8},
 }
 
 
@@ -131,5 +129,69 @@ BANDS = [
         "max_in_band": 10**9,   # band 5: 300,001 and above (effectively unlimited)
         "package": 12000,
         "prices": {"essentials": 0.90, "mid": 0.75, "enterprise": 0.45},
+    },
+]
+
+
+# ---------------------------------------------------------------------------
+# Recommended client recharge rates (£ ex VAT)
+# ---------------------------------------------------------------------------
+# What we recommend the client charges THEIR end client per check.
+# These are constant per product — they don't change by tier or vertical
+# because they're driven by end-client willingness to pay, not by what
+# the law firm/accountant pays Thirdfort.
+RECOMMENDED_RECHARGE = {
+    "Enhanced NFC ID":                30,
+    "Original ID":                    30,
+    "SoF":                            15,
+    "PEPs Ongoing Monitoring":         5,
+    "Stand Alone Screening":           5,
+    "Lite Screening":                  5,
+    "Identity Document Verification":  5,
+    "IAV":                            15,
+    "KYB - Summary Report":           10,
+    "KYB - UBO":                      40,
+}
+
+
+# ---------------------------------------------------------------------------
+# Product categories for the "guide to your check costs" PDF page
+# ---------------------------------------------------------------------------
+# Each category becomes a grouped section in the table with a coloured bar.
+# The order here is the order the groups appear on the page.
+PRODUCT_CATEGORIES = [
+    {
+        "name": "ID, address verification and AML screening",
+        "colour": "#3D7BC5",   # blue
+        "products": [
+            "Enhanced NFC ID",
+            "Original ID",
+            "IAV",
+            "PEPs Ongoing Monitoring",
+        ],
+    },
+    {
+        "name": "Source of funds",
+        "colour": "#D47059",   # terracotta
+        "products": [
+            "SoF",
+        ],
+    },
+    {
+        "name": "Standalone",
+        "colour": "#163D44",   # dark teal
+        "products": [
+            "Identity Document Verification",
+            "Stand Alone Screening",
+            "Lite Screening",
+        ],
+    },
+    {
+        "name": "Know-your-business",
+        "colour": "#F09E8A",   # coral
+        "products": [
+            "KYB - Summary Report",
+            "KYB - UBO",
+        ],
     },
 ]

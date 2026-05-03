@@ -37,7 +37,6 @@ def make_test_quote() -> pricing.Quote:
             "IAV": 0,
             "KYB - Summary Report": 10,
             "KYB - UBO": 5,
-            "Title Check": 0,
         },
     )
 
@@ -81,7 +80,7 @@ def test_zero_volume_quote_still_generates():
             "Enhanced NFC ID", "Original ID", "SoF",
             "PEPs Ongoing Monitoring", "Stand Alone Screening", "Lite Screening",
             "Identity Document Verification", "IAV",
-            "KYB - Summary Report", "KYB - UBO", "Title Check",
+            "KYB - Summary Report", "KYB - UBO",
         ]},
     )
     pdf_bytes = pdf_export.build_pdf(quote, recommended_tier_key="essentials")
@@ -97,7 +96,7 @@ def test_long_client_name_doesnt_crash():
             "Enhanced NFC ID", "Original ID", "SoF",
             "PEPs Ongoing Monitoring", "Stand Alone Screening", "Lite Screening",
             "Identity Document Verification", "IAV",
-            "KYB - Summary Report", "KYB - UBO", "Title Check",
+            "KYB - Summary Report", "KYB - UBO",
         ]},
     )
     pdf_bytes = pdf_export.build_pdf(quote, recommended_tier_key="enterprise")
